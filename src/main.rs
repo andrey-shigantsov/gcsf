@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate clap;
 extern crate config;
-extern crate ctrlc;
 extern crate failure;
 extern crate fuse;
 extern crate gcsf;
@@ -20,10 +19,6 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::prelude::*;
 use std::iter;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::thread;
-use std::time;
 
 use gcsf::{Config, DriveFacade, Gcsf, NullFs};
 
@@ -127,28 +122,13 @@ fn mount_gcsf(config: Config, mountpoint: &str) {
     };
     info!("File system created.");
 
-    unsafe {
-        info!("Mounting to {}", &mountpoint);
-        match fuse::spawn_mount(fs, &mountpoint, &options) {
-            Ok(_session) => {
-                info!("Mounted to {}", &mountpoint);
-
-                let running = Arc::new(AtomicBool::new(true));
-                let r = running.clone();
-
-                ctrlc::set_handler(move || {
-                    info!("Ctrl-C detected");
-                    r.store(false, Ordering::SeqCst);
-                })
-                .expect("Error setting Ctrl-C handler");
-
-                while running.load(Ordering::SeqCst) {
-                    thread::sleep(time::Duration::from_millis(50));
-                }
-            }
-            Err(e) => error!("Could not mount to {}: {}", &mountpoint, e),
-        };
-    }
+    info!("Mounting to {}", &mountpoint);
+    match fuse::mount(fs, &mountpoint, &options) {
+        Ok(()) => {
+            info!("Mounted to {}", &mountpoint);
+        }
+        Err(e) => error!("Could not mount to {}: {}", &mountpoint, e),
+    };
 }
 
 fn login(config: &mut Config) -> Result<(), Error> {
